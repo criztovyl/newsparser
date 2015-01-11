@@ -1,6 +1,6 @@
 /**
 	This is a program to keep an overview over your news.
-    Copyright (C) 2014 Christoph "criztovyl" Schulz
+    Copyright (C) 2014, 2015 Christoph "criztovyl" Schulz
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -18,6 +18,10 @@
 package de.joinout.newsparser;
 
 import java.net.URL;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Calendar;
+import java.util.Locale;
 
 import javax.mail.Message;
 
@@ -27,47 +31,64 @@ import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
-
+/**
+ * A class to parse (some) newsletters from "ZEIT ONLINE" (by "DIE ZEIT"; <a href="http://zeit.de">ZEIT ONLINE</a>).
+ * @author Christoph "criztovyl" Schulz
+ * TODO: Be Fair; Include advertisements, Live Blogs/Eilmeldungen
+ */
 public class ZONewsletter extends AbstractNewsletter{
 
 	/**
 	 * 
 	 */
 	private static final long serialVersionUID = -4951315869497006644L;
+	private static String name = "ZON";
 	private Logger logger;
 
+	/**
+	 * Creates a parser that parses a message.
+	 * @param message the message
+	 */
 	public ZONewsletter(Message message){
 
 		super(message);
 
+		//Init logger
 		logger = LogManager.getLogger();
+		//Set up ignored headings
+		ArrayList<String> ignored_headings = new ArrayList<>(Arrays.asList(new String[]{"ENTDECKEN SIE UNSERE APPS", "VERWALTUNG", "WERBEKUNDEN", "WERBEKUNDEN", "WERBEKUNDEN"}));
 
-		if(doc != null){
+		//Check if document isn't null
+		if(getDocument() != null){
 
 			try{
 
-				Elements title1 = doc.select("html body title");
+				// Select titles for detecting newsletter type
+				//
+				Elements title1 = getDocument().select("html body title");
 
-				Elements title2 = doc.select("html body table tbody tr td table#dynamic1.dynamic tbody tr td table "
+				Elements title2 = getDocument().select("html body table tbody tr td table#dynamic1.dynamic tbody tr td table "
 						+ "tbody tr td table tbody tr td table tbody tr td table#textAndImage2.textAndImage "
 						+ "tbody tr td table tbody tr td font span");
-				//Check if is "ZEIT für euch"
+				
+				//Check if is "ZEIT für euch"; not implemented yet.
 				if(title1.size() > 0 && title1.get(0).text().equals("Zeit Online GmbH - Schüler Newsletter")){
 					logger.warn("\"ZEIT für euch\" is currently not supported.");
 				}
-
 				//Check if is "Fünf vor 8:00"
 				else if(title2.size() > 0 && title2.get(0).text().equals(" FÜNF VOR 8:00")){
 					logger.debug("\"Fünf for 8:00\" newsletter.");
 
 					//Get date
-					String date = doc.select("html body table tbody tr td table#dynamic1.dynamic tbody "
+					String date = getDocument().select("html body table tbody tr td table#dynamic1.dynamic tbody "
 							+ "tr td table tbody tr td table tbody tr td table tbody tr td "
 							+ "table#textAndImage3.textAndImage tbody tr td table tbody tr td font div "
 							+ "font span span").text();
 
+					//Details are only on category page
 					Document doc2 = Jsoup.parse(new URL("http://www.zeit.de/serie/fuenf-vor-acht"), 5000);
 					
+					//Select teasers
 					Elements teasers = doc2.select(
 							"div.outerspace div#wrapper.wrapper.innerspace #content.section "
 							+ "#main .teaserlist .teaser");
@@ -76,10 +97,17 @@ public class ZONewsletter extends AbstractNewsletter{
 
 					boolean found = false;
 					
+					//Search for this newsletter
 					for(Element teaser : teasers){
 						
-						if(teaser.select(".meta").get(0).text().startsWith(date)){
-							logger.debug("Meta!");
+						Elements meta = teaser.select(".meta");
+						
+						//If found .meta, check if starts with date
+						if(meta.size() > 0 && meta.get(0).text().startsWith(date)){
+							
+							logger.debug("Found teaser meta :)");
+							
+							//If so, add advice.
 							add("Politik", new Advice(
 									teaser.select(".supertitle").get(0).text(),
 									"Fünf vor 8.00: " + teaser.select(".title").get(0).text(),
@@ -87,56 +115,94 @@ public class ZONewsletter extends AbstractNewsletter{
 									teaser.select(".innerteaser a").get(0).attr("href"),
 									teaser.select(".teaser-image-wrap img").get(0).attr("src"), 
 									"ZON"));
+							found = true;
 						}
 					}
 					if(!found){
 						logger.warn("\"Fünf vor 8.00\" {} not found.", date);
 					}
-
-					//add("Politik", new Advice(keyword, adv_heading, zhort, readMore, image, "ZON"));
 				}
+				//Take as normal newsletter
 				else{
 					
 					logger.debug("Normal Newsletter");
 
-					//Remove tracking pixels and unneeded images
-					doc.select("img[width=1]").select("img[height=1]").remove();
-					doc.select("img[src=http://images.zeit.de/bilder/elemente/homepage/transparent_pixel.gif]").remove();
-					
-					//Remove footer
-					doc.select("html > body > table > tbody > tr").get(1).remove();
-
 					String generalHeading = "";
+					
+					//Select advice elements
+					Elements elements = getDocument().select("html > body > div.desktopversion > center > table > tbody > tr > td > table > tbody > tr");
+					
+					//Select date and split by " " (written as "DAY. MONTNAME YEAR")
+					String[] date = elements.get(2).text().split(",")[0].replaceAll("TÄGLICHER NEWSLETTER", "").trim().split(" ");
+					
+					//Get date
+					Calendar cal = Calendar.getInstance();
+					cal.clear();
+					cal.set(
+							Integer.parseInt(date[2]),
+							Calendar.getInstance().getDisplayNames(Calendar.MONTH, Calendar.LONG_FORMAT, Locale.GERMANY).get(date[1]), //Need to get from Germany name
+							Integer.parseInt(date[0].replaceAll("\\.", ""))
+							);
+					
+					logger.debug("Date: {}", String.format("%tD", cal));
+					
 					//Select elements which contains "news"
-					for(Element element : doc.select("html > body > table > tbody > tr > td > table > tbody > tr")){
+					for(Element element : elements){
+						
+						//Select the advice
+						Elements advice = element.select("td > table > tbody > tr");
 
 						//Check if is heading
-						if(element.select("a[name]").size() != 0){
+						if(element.select("td > a > img").size() == 0 && element.select("td > b > font").size() == 1){
+
+							//If so, set heading
 							generalHeading = element.text();
+							logger.trace("Heading Element: {}", generalHeading);
+						}
+						//Check if heading is not interesting (address, advertisement details,...)
+						else if(ignored_headings.contains(generalHeading)){
+							continue;
 						}
 						//Check if is "news" and create advice if so
-						else if(element.children().size() == 2){
+						else if(advice.size() != 0 && advice.select(" tr > td").size() != 2){
+							
+							logger.trace("Advice Element");
+							
+							try {
+								
+								Elements parts = advice.select("td font");
+								String keyword = parts.get(0).text();
+								String adv_heading = parts.get(2).text();
+								String zhort = parts.get(3).text();
+								String readMore = "";
+								String image = element.select("td > a > img").attr("src");
 
-							Elements parts = element.select("td");
-							String keyword = parts.get(1).select("font").get(0).text().replaceAll(":$", "");
-							String adv_heading = parts.get(1).select("font").get(1).text();
-							String zhort = parts.get(1).select("font").text();
-							String readMore = parts.get(1).select("a").get(0).attr("href");
-							String image = parts.get(0).select("img").get(0).attr("src");
-
-							if(generalHeading.equals("Kultur"))
-								add("Feuilleton", new Advice(keyword, adv_heading, zhort, readMore, image, "ZON"));
-
-							else
-								add(generalHeading, new Advice(keyword, adv_heading, zhort, readMore, image, "ZON"));
+								//"Kultur" is renamed to "Feuilleton".
+								if(generalHeading.equals("Kultur"))
+									add("Feuilleton", new Advice(keyword, adv_heading, zhort, readMore, image, name, cal));
+								else
+									add(generalHeading, new Advice(keyword, adv_heading, zhort, readMore, image, name, cal));
+								
+							} catch (Exception e) {
+								
+								logger.error("Failed to create advice. Catching exception and will write message body to a file.");							
+								logger.catching(e);
+								if(!advice.toString().contains("Commercial break text"))
+									logger.debug("Advice element:\n{}", advice.toString());
+								
+								writeMessageDocumentToFile();	
+							}
 
 						}
+						else
+							logger.trace("Unknown Element.");
 					}
 				}
 
 			} catch(Exception e){
-				logger.catching(e);
-				//logger.info(doc.toString());
+				
+				logger.catching(e);	
+				writeMessageDocumentToFile();
 			}
 		}
 		else

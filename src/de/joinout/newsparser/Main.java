@@ -19,7 +19,6 @@ package de.joinout.newsparser;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.Properties;
 
 import javax.mail.Flags;
@@ -35,21 +34,26 @@ import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import de.joinout.criztovyl.tools.file.Path;
+import de.joinout.criztovyl.tools.file.Paths;
+import de.joinout.criztovyl.tools.json.JSONFile;
 import de.joinout.criztovyl.tools.log4j.Log4JEnvironment;
 
-public class Mail {
+public class Main {
+	
+	public static Path DIR = Paths.dotDir("newsParser");
+	public static Logger logger;
+	private static JSONFile jsonFile;
 
 	public static void main(String args[]) {
 		Properties props = System.getProperties();
 		props.setProperty("mail.store.protocol", "imaps");
 		
 		new Log4JEnvironment();
+		logger = LogManager.getLogger();
 		
-		Logger logger = LogManager.getLogger();
-		
-		News news = new News();
-		
-
+		jsonFile = new JSONFile(DIR.append("news.json"));
+		News news = new News(jsonFile.getJSONObject());
 		
 		try {
 			Session session = Session.getDefaultInstance(props, null);
@@ -66,8 +70,6 @@ public class Mail {
 			
 			logger.info("Searched messages");
 			
-			ArrayList<FAZNewsletter> faz = new ArrayList<>();
-			
 			logger.info("Iterating over messages");
 			for(Message message : faz_messages){
 				
@@ -78,7 +80,6 @@ public class Mail {
 				
 				logger.info("Parsed Message");
 			}
-			logger.info("{} FAZ Mails", faz.size());
 			
 			logger.info("Opening ZO");
 			
@@ -88,8 +89,6 @@ public class Mail {
 			Message[] zo_messages = zoFolder.search(new FlagTerm(new Flags(Flags.Flag.SEEN), false));
 			
 			logger.info("Searched messages");
-			
-			ArrayList<ZONewsletter> zo = new ArrayList<>();
 			
 			logger.info("Iterating over messages");
 			
@@ -102,13 +101,14 @@ public class Mail {
 				
 				logger.info("Parsed message");
 			}
-			logger.info("{} ZO messages", zo.size());
 			
 			for(String key : news.keySet()){
 				System.out.println(key);
 				for(Advice advice : news.get(key))
-					System.out.println(String.format("\t(%s) %s", advice.getSource(), advice.getHeading()));
+					System.out.println(String.format("\t(%s|%s) %s", advice.getSourceName(), advice.getKeyword(), advice.getHeading()));
 			}
+			
+			jsonFile.setData(news.getJSON()).write();
 			
 			
 //			String messageS = "";
@@ -146,7 +146,7 @@ public class Mail {
 //			
 //			File file = new File("/home/christoph/public_html/clipboard.htm");
 //			FileUtils.writeStringToFile(file, doc.toString());
-			
+//
 //			Message messages[] = inbox.getMessage(inbox.getMessageCount());
 //			
 //			for(Message message:messages) {
@@ -166,9 +166,12 @@ public class Mail {
 			e.printStackTrace();
 			System.exit(2);
 		} catch (IOException e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
+		
+		logger.info("End.");
 
 	}
+	
+	
 }

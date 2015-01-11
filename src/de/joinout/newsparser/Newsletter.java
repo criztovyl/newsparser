@@ -17,10 +17,10 @@
  */
 package de.joinout.newsparser;
 
-import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Set;
 
 public interface Newsletter {
 	
-	public HashMap<String, ArrayList<Advice>> getNews();
+	public HashMap<String, Set<Advice>> getNews();
 }
